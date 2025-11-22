@@ -16,9 +16,9 @@ export const AddtoCart = async (req, res) => {
     }
 
 
-    const [[alreadyincart]]= await pool.query(`SELECT * FROM carts where product_id = ? 
+    const [existingCart] = await pool.query(`SELECT * FROM carts where product_id = ? 
       AND user_id = ? `,[product_id,user.id])
-if(alreadyincart){
+if(existingCart.length > 0){
     return res
         .json({ success: true, message: "Allready in cart" });
 }
@@ -33,6 +33,16 @@ if(alreadyincart){
     });
   } catch (error) {
     console.error("Add to cart error:", error);
+    
+    // Check if it's a database connection error
+    if (error.code === 'ECONNREFUSED' || error.code === 'PROTOCOL_CONNECTION_LOST') {
+      return res.status(503).json({
+        success: false,
+        message: "Database connection failed. Please check if MySQL is running.",
+        error: "Database connection error"
+      });
+    }
+    
     return res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -42,17 +52,21 @@ if(alreadyincart){
 };
 
 export const allReadyInCArt=async(req,res)=>{
+try {
     const { user } = req; 
     const { product_id } = req.params;
 
-    const [[allreadycart]]= await pool.query(`SELECT * FROM carts WHERE product_id = ? AND  user_id = ?`,[product_id,user.id])
+    const [cartRows] = await pool.query(`SELECT * FROM carts WHERE product_id = ? AND  user_id = ?`,[product_id,user.id])
 
-if(allreadycart){
+if(cartRows.length > 0){
   return res.json({success:true,message:"Allready in cart"})
 }
 else{
     return res.json({success:false,message:"Not in cart"})
-
+}
+} catch (error) {
+    console.error("Error checking cart:", error);
+    return res.json({success:false, message: error.message});
 }
 
 
@@ -62,30 +76,51 @@ else{
 
 
 export const GetAllCart=async(req,res)=>{
-const { user } = req;
+try {
+  const { user } = req;
 
-const [carts] = await pool.query(
-  `SELECT 
-      carts.id AS cart_id,
-      carts.user_id,
-      carts.product_id,
-      carts.quantity,
-      carts.price AS cart_price,
-      (carts.quantity * carts.price) AS total_price,
-      products.name,
-      products.price AS product_price,
-      products.images
-   FROM carts
-   INNER JOIN products ON carts.product_id = products.id
-   WHERE carts.user_id = ?`,
-  [user.id]
-);
+  const [carts] = await pool.query(
+    `SELECT 
+        carts.id AS cart_id,
+        carts.user_id,
+        carts.product_id,
+        carts.quantity,
+        carts.price AS cart_price,
+        (carts.quantity * carts.price) AS total_price,
+        products.name,
+        products.price AS product_price,
+        products.images
+     FROM carts
+     INNER JOIN products ON carts.product_id = products.id
+     WHERE carts.user_id = ?`,
+    [user.id]
+  );
 
-if (!carts.length) {
-  return res.json({ success: false, message: "Cart is empty" });
+  if (!carts.length) {
+    return res.json({ success: false, message: "Cart is empty" });
+  }
+
+  // Parse images if stored as JSON string
+  const parsedCarts = carts.map(cart => ({
+    ...cart,
+    images: typeof cart.images === 'string' ? JSON.parse(cart.images) : cart.images
+  }));
+
+  return res.json({ success: true, carts: parsedCarts });
+} catch (error) {
+  console.error("Error fetching cart:", error);
+  
+  // Check if it's a database connection error
+  if (error.code === 'ECONNREFUSED' || error.code === 'PROTOCOL_CONNECTION_LOST') {
+    return res.status(503).json({
+      success: false,
+      message: "Database connection failed. Please check if MySQL is running.",
+      error: "Database connection error"
+    });
+  }
+  
+  return res.status(500).json({ success: false, message: "Server error" });
 }
-
-return res.json({ success: true, carts });
 
 
 }
@@ -97,14 +132,16 @@ export const UpdateCart = async (req, res) => {
     const { increment } = req.body;
 
     // 1. Fetch the current cart row
-    const [[cart]] = await pool.execute(
+    const [cartRows] = await pool.execute(
       `SELECT * FROM carts WHERE id = ?`,
       [cartId]
     );
 
-    if (!cart) {
+    if (cartRows.length === 0) {
       return res.status(404).json({ success: false, message: "Cart not found" });
     }
+
+    const cart = cartRows[0];
 
     let newQuantity = cart.quantity;
     if (increment) {
@@ -135,6 +172,16 @@ export const UpdateCart = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating cart:", error);
+    
+    // Check if it's a database connection error
+    if (error.code === 'ECONNREFUSED' || error.code === 'PROTOCOL_CONNECTION_LOST') {
+      return res.status(503).json({
+        success: false,
+        message: "Database connection failed. Please check if MySQL is running.",
+        error: "Database connection error"
+      });
+    }
+    
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -144,14 +191,16 @@ export const deleteCart = async (req, res) => {
     const cartId = req.params.id;
 
     // Check if cart exists
-    const [[cart]] = await pool.execute(
+    const [cartRows] = await pool.execute(
       `SELECT * FROM carts WHERE id = ?`,
       [cartId]
     );
 
-    if (!cart) {
+    if (cartRows.length === 0) {
       return res.status(404).json({ success: false, message: "Cart not found" });
     }
+
+    const cart = cartRows[0];
 
     // Delete cart row
     await pool.execute(`DELETE FROM carts WHERE id = ?`, [cartId]);
@@ -163,6 +212,16 @@ export const deleteCart = async (req, res) => {
     });
   } catch (error) {
     console.error("Error deleting cart:", error);
+    
+    // Check if it's a database connection error
+    if (error.code === 'ECONNREFUSED' || error.code === 'PROTOCOL_CONNECTION_LOST') {
+      return res.status(503).json({
+        success: false,
+        message: "Database connection failed. Please check if MySQL is running.",
+        error: "Database connection error"
+      });
+    }
+    
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -172,7 +231,7 @@ export const getSingleCart = async (req, res) => {
     const cartId = req.params.id;
 
     // Query cart with product details
-   const [[cart]] = await pool.execute(
+   const [cartRows] = await pool.execute(
   `SELECT 
       carts.id AS cart_id,
       carts.user_id,
@@ -193,9 +252,11 @@ export const getSingleCart = async (req, res) => {
 );
 
 
-    if (!cart) {
+    if (cartRows.length === 0) {
       return res.status(404).json({ success: false, message: "Cart not found" });
     }
+
+    const cart = cartRows[0];
 
     return res.json({ success: true, cart });
   } catch (error) {

@@ -23,13 +23,31 @@ try {
 
 
 const getBannner=async(req,res)=>{
-    const [banners]= await pool.query(`SELECT * FROM banners`) 
+  try {
+    const [banners]= await pool.query(`SELECT * FROM banners ORDER BY created_at DESC`) 
     if(banners.length==0){
-    return res.json({success:false})
-
+      return res.json({success:false, message: "No banners found"})
     }
 
-    return res.json({success:true,banners})
+    return res.json({success:true, banners})
+  } catch (error) {
+    console.error("Get Banner Error:", error);
+    
+    // Check if it's a database connection error
+    if (error.code === 'ECONNREFUSED' || error.code === 'PROTOCOL_CONNECTION_LOST') {
+      return res.status(500).json({
+        success: false,
+        message: "Database connection failed. Please check if MySQL is running.",
+        error: "Database connection error"
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching banners",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
 }
 
 

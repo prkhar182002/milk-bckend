@@ -8,6 +8,11 @@ export const createToken = (id) => {
 };
 
 export const TokenVerify=(token)=>{
-    const id = jwt.verify(token,SECRETKEY);
-    return id.id
+    try {
+        const id = jwt.verify(token,SECRETKEY);
+        return id.id;
+    } catch (error) {
+        console.error("Token verification error:", error);
+        return null;
+    }
 }

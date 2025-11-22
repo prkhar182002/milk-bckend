@@ -43,12 +43,31 @@ const createCategory = async (req, res) => {
 
 
 const getCategory = async(req,res)=>{
-  const [category]= await pool.query(`SELECT * FROM categories`)
-  if(category.length ===0){
-return    res.json({success:false})
-  }
+  try {
+    const [category]= await pool.query(`SELECT * FROM categories`)
+    if(category.length ===0){
+      return res.json({success:false, message: "No categories found"})
+    }
 
     return res.json({success:true,category});
+  } catch (error) {
+    console.error("Get Category Error:", error);
+    
+    // Check if it's a database connection error
+    if (error.code === 'ECONNREFUSED' || error.code === 'PROTOCOL_CONNECTION_LOST') {
+      return res.status(500).json({
+        success: false,
+        message: "Database connection failed. Please check if MySQL is running.",
+        error: "Database connection error"
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching categories",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
 }
 
 
@@ -154,15 +173,35 @@ const [product]= await pool.query(`
       ORDER BY p.created_at DESC
     `);
 if(product.length ==0){
-  return res.json({success:false})
+  return res.json({success:false, message: "No products found"})
 }
 
-    return res.json({success:true,product})
+    // Parse images for each product
+    const parsedProducts = product.map(p => ({
+      ...p,
+      images: safeParseJSON(p.images)
+    }));
+
+    return res.json({success:true, product: parsedProducts})
 
   
 } catch (error) {
-    return res.json({success:false,message:error.message})
-
+    console.error("Get All Products Error:", error);
+    
+    // Check if it's a database connection error
+    if (error.code === 'ECONNREFUSED' || error.code === 'PROTOCOL_CONNECTION_LOST') {
+      return res.status(500).json({
+        success: false,
+        message: "Database connection failed. Please check if MySQL is running.",
+        error: "Database connection error"
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching products",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
 }
   }
 
@@ -207,14 +246,16 @@ const getProductByCategory = async (req, res) => {
       return res.json({ success: true, product: parsedProducts });
     } else {
       // 1. Find category
-      const [[cate]] = await pool.query(
+      const [categoryRows] = await pool.query(
         `SELECT * FROM categories WHERE name = ?`,
         [category]
       );
 
-      if (!cate) {
+      if (categoryRows.length === 0) {
         return res.json({ success: false, message: "Category not found" });
       }
+
+      const cate = categoryRows[0];
 
       
       const [products] = await pool.query(
@@ -253,8 +294,22 @@ const getProductByCategory = async (req, res) => {
       return res.json({ success: true, product: parsedProducts });
     }
   } catch (error) {
-    console.error(error);
-    return res.json({ success: false, message: error.message });
+    console.error("Get Product By Category Error:", error);
+    
+    // Check if it's a database connection error
+    if (error.code === 'ECONNREFUSED' || error.code === 'PROTOCOL_CONNECTION_LOST') {
+      return res.status(500).json({
+        success: false,
+        message: "Database connection failed. Please check if MySQL is running.",
+        error: "Database connection error"
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching products",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
  
@@ -268,13 +323,25 @@ function safeParseJSON(str) {
 }
 
 const getSinglePRoduct=async(req,res)=>{
-const {slug}=req.params;
+try {
+  const {slug}=req.params;
 
-const [[product]]= await pool.query(`SELECT * FROM products WHERE slug = ?`,[slug]);
-if(!product){
-return res.json({success:false})
+  const [rows] = await pool.query(`SELECT * FROM products WHERE slug = ?`,[slug]);
+  if(rows.length === 0){
+    return res.json({success:false, message: "Product not found"})
+  }
+  
+  const product = rows[0];
+  // Parse images if stored as JSON string
+  if (product.images && typeof product.images === 'string') {
+    product.images = safeParseJSON(product.images);
+  }
+  
+  return res.json({success:true,product});
+} catch (error) {
+  console.error("Error fetching product:", error);
+  return res.json({success:false, message: error.message});
 }
-return res.json({success:true,product});
 
 
 }

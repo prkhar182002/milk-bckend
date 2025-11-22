@@ -9,13 +9,36 @@ export const SignupUser = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
 
+    // Validate all fields are provided
     if (!name || !email || !phone || !password) {
       return res.status(400).json({ success:false, message: "All fields are required" });
     }
 
+    // Validate name (minimum 2 characters)
+    if (name.trim().length < 2) {
+      return res.status(400).json({ success:false, message: "Name must be at least 2 characters long" });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      return res.status(400).json({ success:false, message: "Please enter a valid email address" });
+    }
+
+    // Validate phone (should be 10 digits, can include country code)
+    const phoneRegex = /^[+]?[(]?[0-9]{1,4}[)]?[-\s.]?[(]?[0-9]{1,4}[)]?[-\s.]?[0-9]{1,9}$/;
+    if (!phoneRegex.test(phone.trim())) {
+      return res.status(400).json({ success:false, message: "Please enter a valid phone number" });
+    }
+
+    // Validate password (minimum 6 characters)
+    if (password.length < 6) {
+      return res.status(400).json({ success:false, message: "Password must be at least 6 characters long" });
+    }
+
     const [existingUser] = await pool.query(
       `SELECT * FROM users WHERE email = ? OR phone = ?`,
-      [email, phone]
+      [email.trim(), phone.trim()]
     );
 
     if (existingUser.length > 0) {
@@ -27,7 +50,7 @@ export const SignupUser = async (req, res) => {
 
 const [result]=    await pool.query(
       `INSERT INTO users (name, email, phone, password) VALUES (?, ?, ?, ?)`,
-      [name, email, phone, hashedPassword]
+      [name.trim(), email.trim().toLowerCase(), phone.trim(), hashedPassword]
     );
 
     const userId = result.insertId;
@@ -37,7 +60,7 @@ const token = createToken(userId);
 res.cookie("user", token, {
  path:'/',
         httpOnly:true,
-        expires: new Date(Date.now()+7000 *86400*5),
+        expires: new Date(Date.now() + 86400 * 1000 * 5), // 5 days in milliseconds
         sameSite:'none',
       secure:true,
 })
@@ -53,7 +76,29 @@ res.cookie("user", token, {
     return res.status(201).json({success:true, token , message: "User registered successfully" });
   } catch (error) {
     console.error("Signup error:", error);
-    return res.status(500).json({success:false,  message: "Internal server error" });
+    
+    // Check if it's a database connection error
+    if (error.code === 'ECONNREFUSED' || error.code === 'PROTOCOL_CONNECTION_LOST') {
+      return res.status(500).json({
+        success: false,
+        message: "Database connection failed. Please check if MySQL is running.",
+        error: "Database connection error"
+      });
+    }
+    
+    // Check for duplicate entry error
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({
+        success: false,
+        message: "User already exists with this email or phone"
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
@@ -73,14 +118,37 @@ export const LoginUser = async (req, res) => {
   try {
     const { email, phone, password } = req.body;
 
+    // Validate required fields
     if ((!email && !phone) || !password) {
       return res.status(400).json({ success: false, message: "Email/Phone and password are required" });
     }
 
+    // Validate password is not empty
+    if (password.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "Password cannot be empty" });
+    }
+
+    // If email is provided, validate format
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email.trim())) {
+        return res.status(400).json({ success: false, message: "Please enter a valid email address" });
+      }
+    }
+
+    // If phone is provided, validate format
+    if (phone) {
+      const phoneRegex = /^[+]?[(]?[0-9]{1,4}[)]?[-\s.]?[(]?[0-9]{1,4}[)]?[-\s.]?[0-9]{1,9}$/;
+      if (!phoneRegex.test(phone.trim())) {
+        return res.status(400).json({ success: false, message: "Please enter a valid phone number" });
+      }
+    }
+
     // find user by email OR phone
+    const searchValue = email ? email.trim().toLowerCase() : phone.trim();
     const [user] = await pool.query(
       `SELECT * FROM users WHERE email = ? OR phone = ? LIMIT 1`,
-      [email, phone]
+      [searchValue, searchValue]
     );
 
     if (user.length === 0) {
@@ -102,7 +170,7 @@ export const LoginUser = async (req, res) => {
     res.cookie("user", token, {
      path:'/',
         httpOnly:true,
-        expires: new Date(Date.now()+7000 *86400*5),
+        expires: new Date(Date.now() + 86400 * 1000 * 5), // 5 days in milliseconds
         sameSite:'none',
       secure:true,
     });
@@ -114,7 +182,21 @@ export const LoginUser = async (req, res) => {
     });
   } catch (error) {
     console.error("Login error:", error);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    
+    // Check if it's a database connection error
+    if (error.code === 'ECONNREFUSED' || error.code === 'PROTOCOL_CONNECTION_LOST') {
+      return res.status(500).json({
+        success: false,
+        message: "Database connection failed. Please check if MySQL is running.",
+        error: "Database connection error"
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
