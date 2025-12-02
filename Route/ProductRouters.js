@@ -8,5 +8,7 @@ route.get("/",Categorycontroler.getallProduct)
 route.get("/:category",Categorycontroler.getProductByCategory)
 route.get("/product/:slug",Categorycontroler.getSinglePRoduct)
 route.get("/product/search/:search",Categorycontroler.searchProduct)
+route.put("/:id",uploadsingleimg.array("images",9),Categorycontroler.updateProduct)
+route.delete("/:id",Categorycontroler.deleteProduct)
 
 export default route;
