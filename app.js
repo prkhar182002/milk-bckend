@@ -22,8 +22,9 @@ const app= express()
 
 app.use(
   cors({
-    origin: [process.env.url, "http://localhost:3000", "http://localhost:3001"],
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    // Allow all origins (reflect request origin). Works with `credentials: true`.
+    origin: (origin, callback) => callback(null, true),
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   })
