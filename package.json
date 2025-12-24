@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon app.js",
+    "build": "node build.js",
+    "start": "node app.js",
+    "start:prod": "node dist/app.js",
     "migrate": "node models/userModel.js",
     "migrate:admin": "node models/adminModel.js",
     "admin:create": "node scripts/createAdmin.js",

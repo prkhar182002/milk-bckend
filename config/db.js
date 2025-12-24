@@ -8,15 +8,11 @@ dotenv.config();
 (async () => {
   try {
     const tempConnection = await mysqlPromise.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
+      host: process.env.DB_HOST || "",
+      user: process.env.DB_USER || "",
       password: process.env.DB_PASSWORD || "",
     });
-
-    await tempConnection.query(
-      `CREATE DATABASE IF NOT EXISTS ${process.env.DB_NAME}`
-    );
-
+    await tempConnection.query(`CREATE DATABASE IF NOT EXISTS ${process.env.DB_NAME}`);
     console.log(`✅ Database '${process.env.DB_NAME}' ready`);
     await tempConnection.end();
   } catch (err) {
@@ -27,10 +23,10 @@ dotenv.config();
 // 2️⃣ Create connection pool
 const db = mysqlPromise.createPool({
   connectionLimit: 10,
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
+  host: process.env.DB_HOST || "",
+  user: process.env.DB_USER || "",
   password: process.env.DB_PASSWORD || "",
-  database: process.env.DB_NAME,
+  database: process.env.DB_NAME || "",
   waitForConnections: true,
   queueLimit: 0,
 });
