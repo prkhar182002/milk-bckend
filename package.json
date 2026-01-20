@@ -10,6 +10,7 @@
     "start:prod": "node dist/app.js",
     "migrate": "node models/userModel.js",
     "migrate:admin": "node models/adminModel.js",
+    "migrate:payments": "node models/paymentModel.js",
     "migrate:blogs": "node scripts/migrateBlogs.js",
     "seed:blogs": "node scripts/seedBlogs.js",
     "clear:blogs": "node scripts/clearBlogs.js",
