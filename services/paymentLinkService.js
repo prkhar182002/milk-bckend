@@ -275,15 +275,16 @@ export async function createRefund(params) {
  */
 export function verifyWebhookSignature(webhookBody, signature, secret) {
   try {
+    if (!secret || !signature || !webhookBody) return false;
     const expectedSignature = crypto
       .createHmac("sha256", secret)
       .update(webhookBody)
       .digest("hex");
 
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature)
-    );
+    const sigBuf = Buffer.from(String(signature));
+    const expectedBuf = Buffer.from(expectedSignature);
+    if (sigBuf.length !== expectedBuf.length) return false;
+    return crypto.timingSafeEqual(sigBuf, expectedBuf);
   } catch (error) {
     console.error("❌ Error verifying webhook signature:", error);
     return false;

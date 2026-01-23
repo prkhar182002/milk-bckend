@@ -15,7 +15,7 @@ async function migrate() {
         razorpay_payment_link_id VARCHAR(255) NOT NULL UNIQUE,
         order_id BIGINT(20) UNSIGNED DEFAULT NULL,
         site_user_id BIGINT(20) UNSIGNED NOT NULL,
-        amount DECIMAL(12,2) NOT NULL CHECK (amount >= 0),
+        amount DECIMAL(12,2) NOT NULL ,
         currency VARCHAR(10) NOT NULL DEFAULT 'INR',
         description TEXT DEFAULT NULL,
         customer_name VARCHAR(255) DEFAULT NULL,
@@ -56,7 +56,7 @@ async function migrate() {
         payment_link_id BIGINT(20) UNSIGNED DEFAULT NULL,
         order_id BIGINT(20) UNSIGNED DEFAULT NULL,
         site_user_id BIGINT(20) UNSIGNED NOT NULL,
-        amount DECIMAL(12,2) NOT NULL CHECK (amount >= 0),
+        amount DECIMAL(12,2) NOT NULL,
         currency VARCHAR(10) NOT NULL DEFAULT 'INR',
         status ENUM('pending', 'authorized', 'captured', 'failed', 'refunded', 'partially_refunded') 
           NOT NULL DEFAULT 'pending',
@@ -68,7 +68,7 @@ async function migrate() {
         card_id VARCHAR(255) DEFAULT NULL,
         invoice_id VARCHAR(255) DEFAULT NULL,
         international BOOLEAN DEFAULT FALSE,
-        amount_refunded DECIMAL(12,2) DEFAULT 0 CHECK (amount_refunded >= 0),
+        amount_refunded DECIMAL(12,2) DEFAULT 0,
         refund_status ENUM('null', 'partial', 'full') DEFAULT 'null',
         captured BOOLEAN DEFAULT FALSE,
         description TEXT DEFAULT NULL,
@@ -112,7 +112,7 @@ async function migrate() {
         transaction_id BIGINT(20) UNSIGNED NOT NULL,
         payment_id VARCHAR(255) NOT NULL,
         order_id BIGINT(20) UNSIGNED DEFAULT NULL,
-        amount DECIMAL(12,2) NOT NULL CHECK (amount >= 0),
+        amount DECIMAL(12,2) NOT NULL,
         currency VARCHAR(10) NOT NULL DEFAULT 'INR',
         status ENUM('pending', 'processed', 'failed') NOT NULL DEFAULT 'pending',
         speed VARCHAR(50) DEFAULT 'normal',
@@ -189,16 +189,15 @@ async function migrate() {
 }
 
 // Run migration if this file is executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
-  migrate()
-    .then(() => {
-      console.log("Migration completed");
-      process.exit(0);
-    })
-    .catch((error) => {
-      console.error("Migration error:", error);
-      process.exit(1);
-    });
-}
+migrate()
+  .then(() => {
+    console.log("Migration completed");
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("Migration error:", error);
+    process.exit(1);
+  });
+
 
 export default migrate;

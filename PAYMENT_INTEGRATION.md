@@ -48,7 +48,8 @@ This creates the following tables:
 Configure webhook endpoint in Razorpay Dashboard:
 
 1. Go to Razorpay Dashboard → Settings → Webhooks
-2. Add webhook URL: `https://your-domain.com/api/webhooks/razorpay`
+2. Add webhook URL: `https://api.gauallamilk.com/api/webhook` (Production)
+   - Alternative endpoint also available: `https://api.gauallamilk.com/api/webhooks/razorpay`
 3. Subscribe to the following events:
    - `payment_link.paid`
    - `payment_link.expired`
@@ -58,6 +59,8 @@ Configure webhook endpoint in Razorpay Dashboard:
    - `refund.created`
    - `refund.processed`
 4. Copy the webhook secret and add it to `.env` as `RAZORPAY_WEBHOOK_SECRET`
+
+**Important:** Razorpay automatically calls this webhook URL when payment events occur. You don't need to call it from your code.
 
 ## API Endpoints
 
@@ -198,15 +201,24 @@ Authorization: Bearer <admin_token> or Cookie: admin=<token>
 
 ### Webhook Endpoint
 
+**Production Endpoint:**
 ```
-POST /api/webhooks/razorpay
+POST https://api.gauallamilk.com/api/webhook
 Content-Type: application/json
 X-Razorpay-Signature: <signature>
 
 Body: (Razorpay webhook payload)
 ```
 
-**Note:** This endpoint automatically verifies webhook signatures and processes events.
+**Alternative Endpoint (also available):**
+```
+POST https://api.gauallamilk.com/api/webhooks/razorpay
+```
+
+**Note:** 
+- Razorpay automatically calls this endpoint when payment events occur (you don't call it from your code)
+- The endpoint automatically verifies webhook signatures and processes events
+- All webhook events are stored in the `webhook_events` table for audit trail
 
 ## Payment Flow
 

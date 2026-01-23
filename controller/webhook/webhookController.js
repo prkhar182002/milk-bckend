@@ -4,6 +4,7 @@ import {
 } from "../../services/paymentLinkService.js";
 import pool from "../../config.js";
 import { razorpay } from "../../services/paymentLinkService.js";
+import crypto from "crypto";
 
 /**
  * Razorpay Webhook Handler
@@ -16,6 +17,15 @@ export const handleRazorpayWebhook = async (req, res) => {
   // Get raw body for signature verification
   // req.body is already parsed as Buffer when using express.raw()
   const webhookBody = req.body.toString();
+
+  if (!webhookSecret) {
+    console.error("❌ RAZORPAY_WEBHOOK_SECRET not configured");
+    return res.status(500).json({
+      success: false,
+      
+      message: "Webhook secret not configured",
+    });
+  }
 
   // Parse JSON body
   let event;
@@ -38,28 +48,50 @@ export const handleRazorpayWebhook = async (req, res) => {
     });
   }
   const eventType = event.event;
-  const entity = event.payload?.payment_link?.entity || event.payload?.payment?.entity || event.payload?.refund?.entity;
+  const paymentLinkEntity = event.payload?.payment_link?.entity || null;
+  const paymentEntity = event.payload?.payment?.entity || null;
+  const refundEntity = event.payload?.refund?.entity || null;
+  const entity = paymentLinkEntity || paymentEntity || refundEntity;
 
   console.log(`📨 Webhook received: ${eventType}`);
 
   // Store webhook event for audit trail
   let webhookEventId;
   try {
+    const headerEventId =
+      req.headers["x-razorpay-event-id"] ||
+      req.headers["x-razorpay-eventid"] ||
+      req.headers["x-razorpay-webhook-id"];
+    const stableBodyId = crypto
+      .createHash("sha256")
+      .update(webhookBody)
+      .digest("hex")
+      .slice(0, 32);
+    const eventId = event.id || headerEventId || `evt_${stableBodyId}`;
+
+    const entityType = entity?.entity || (paymentLinkEntity ? "payment_link" : paymentEntity ? "payment" : refundEntity ? "refund" : "unknown");
+    const entityId = entity?.id || "unknown";
+    const paymentId = paymentEntity?.id || null;
+    const paymentLinkId = paymentLinkEntity?.id || null;
+    const amount =
+      typeof entity?.amount === "number" ? entity.amount / 100 : null;
+    const status = entity?.status || null;
+
     const [result] = await pool.query(
       `INSERT INTO webhook_events (
         event_id, event_type, entity_type, entity_id, payment_id, payment_link_id,
         order_id, amount, status, payload, signature_verified
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        event.id || `evt_${Date.now()}`,
+        eventId,
         eventType,
-        entity?.entity || "unknown",
-        entity?.id || "unknown",
-        entity?.id || null,
-        entity?.id || null,
-        null,
-        entity?.amount ? entity.amount / 100 : null,
-        entity?.status || null,
+        entityType,
+        entityId,
+        paymentId,
+        paymentLinkId,
+        null, // local order_id (only available for payment_links flow right now)
+        amount,
+        status,
         JSON.stringify(event),
         true,
       ]
@@ -216,13 +248,65 @@ async function handlePaymentCaptured(payload) {
 
   console.log(`💰 Payment captured: ${payment.id}`);
 
-  // Update transaction
-  await pool.query(
-    `UPDATE transactions 
-     SET status = 'captured', captured = true, updated_at = CURRENT_TIMESTAMP
-     WHERE razorpay_payment_id = ?`,
+  // Check if transaction exists
+  const [existingTransactions] = await pool.query(
+    `SELECT id, order_id, site_user_id FROM transactions WHERE razorpay_payment_id = ?`,
     [payment.id]
   );
+
+  if (existingTransactions.length > 0) {
+    // Update existing transaction
+    await pool.query(
+      `UPDATE transactions 
+       SET status = 'captured', captured = true, updated_at = CURRENT_TIMESTAMP
+       WHERE razorpay_payment_id = ?`,
+      [payment.id]
+    );
+
+    // Update order status if linked to an order
+    if (existingTransactions[0].order_id) {
+      await pool.query(
+        `UPDATE orders 
+         SET payment_status = 'paid', status = 'processing', updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [existingTransactions[0].order_id]
+      );
+      console.log(`✅ Order ${existingTransactions[0].order_id} updated to paid status via webhook`);
+    }
+  } else {
+    // Transaction doesn't exist - create it (webhook arrived before verifyOrder)
+    // This ensures all payment data is stored even if verifyOrder hasn't run yet
+    const amount = payment.amount ? payment.amount / 100 : 0;
+    
+    try {
+      await pool.query(
+        `INSERT INTO transactions (
+          razorpay_payment_id, razorpay_order_id, site_user_id,
+          amount, currency, status, captured, payment_method, payment_method_type,
+          bank, wallet, vpa, description, razorpay_created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          payment.id,
+          payment.order_id || null,
+          null, // site_user_id - will be updated when verifyOrder runs
+          amount,
+          payment.currency || "INR",
+          "captured",
+          true,
+          payment.method || null,
+          payment.method || null,
+          payment.bank || null,
+          payment.wallet || null,
+          payment.vpa || null,
+          payment.description || null,
+          payment.created_at || null,
+        ]
+      );
+      console.log(`✅ Transaction record created for payment ${payment.id} (order will be linked when verifyOrder runs)`);
+    } catch (error) {
+      console.error(`❌ Error creating transaction for payment ${payment.id}:`, error);
+    }
+  }
 }
 
 /**

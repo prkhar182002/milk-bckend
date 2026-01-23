@@ -21,7 +21,7 @@ import userRoutes from "./Route/userRoutes.js";
 
 
 dotenv.config()
-const app= express()
+const app= express()  
 
 app.use(
   cors({
@@ -35,7 +35,10 @@ app.use(
 
 // Webhook routes need raw body for signature verification
 // Must be registered before express.json() middleware
-app.use("/api/webhooks", express.raw({ type: "application/json" }), webhookRoutes);
+// app.use("/api/webhooks", express.raw({ type: "application/json" }), webhookRoutes);
+// Production-compatible webhook endpoint (as requested)
+// Keep raw body for signature verification
+app.use("/api/webhook", express.raw({ type: "application/json" }), webhookRoutes);
 
 app.use(express.json())
 app.use(cookieParser())
