@@ -198,6 +198,12 @@ export const handleRazorpayWebhook = async (req, res) => {
         console.log(`✅ handlePaymentLinkCancelled completed`);
         break;
 
+      case "payment.authorized":
+        console.log(`📞 Calling handlePaymentAuthorized...`);
+        await handlePaymentAuthorized(event.payload);
+        console.log(`✅ handlePaymentAuthorized completed`);
+        break;
+
       case "payment.captured":
         console.log(`📞 Calling handlePaymentCaptured...`);
         await handlePaymentCaptured(event.payload);
@@ -208,6 +214,12 @@ export const handleRazorpayWebhook = async (req, res) => {
         console.log(`📞 Calling handlePaymentFailed...`);
         await handlePaymentFailed(event.payload);
         console.log(`✅ handlePaymentFailed completed`);
+        break;
+
+      case "order.paid":
+        console.log(`📞 Calling handleOrderPaid...`);
+        await handleOrderPaid(event.payload);
+        console.log(`✅ handleOrderPaid completed`);
         break;
 
       case "refund.created":
@@ -339,6 +351,52 @@ async function handlePaymentLinkCancelled(payload) {
 }
 
 /**
+ * Handle payment.authorized event
+ */
+async function handlePaymentAuthorized(payload) {
+  const payment = payload.payment.entity;
+
+  console.log(`\n${"-".repeat(80)}`);
+  console.log(`💳 Processing payment.authorized event`);
+  console.log(`💳 Payment ID: ${payment.id}`);
+  console.log(`📊 Payment Status: ${payment.status}`);
+  console.log(`💰 Amount: ${payment.amount ? payment.amount / 100 : "N/A"}`);
+  console.log(`🔑 Razorpay Order ID: ${payment.order_id || "N/A"}`);
+
+  // Check if transaction exists
+  console.log(`🔍 Checking for existing transaction with payment_id: ${payment.id}`);
+  const [existingTransactions] = await pool.query(
+    `SELECT id, order_id, site_user_id, razorpay_order_id FROM transactions WHERE razorpay_payment_id = ?`,
+    [payment.id]
+  );
+
+  console.log(`📊 Found ${existingTransactions.length} existing transaction(s)`);
+
+  if (existingTransactions.length > 0) {
+    const transaction = existingTransactions[0];
+    console.log(`📝 Existing Transaction Details:`, {
+      id: transaction.id,
+      order_id: transaction.order_id,
+      site_user_id: transaction.site_user_id,
+      razorpay_order_id: transaction.razorpay_order_id,
+    });
+    
+    // Update existing transaction status to authorized
+    console.log(`🔄 Updating transaction status to 'authorized'...`);
+    await pool.query(
+      `UPDATE transactions 
+       SET status = 'authorized', updated_at = CURRENT_TIMESTAMP
+       WHERE razorpay_payment_id = ?`,
+      [payment.id]
+    );
+    console.log(`✅ Transaction updated successfully`);
+  } else {
+    console.log(`⚠️ No existing transaction found. Will be created when payment is captured or verifyOrder runs.`);
+  }
+  console.log(`${"-".repeat(80)}\n`);
+}
+
+/**
  * Handle payment.captured event
  */
 async function handlePaymentCaptured(payload) {
@@ -457,16 +515,48 @@ async function handlePaymentCaptured(payload) {
     } else {
       console.log(`⚠️ Transaction has no order_id or razorpay_order_id. Will be linked when verifyOrder runs.`);
     }
-    } else {
+  } else {
       // Transaction doesn't exist - create it (webhook arrived before verifyOrder)
       // This ensures all payment data is stored even if verifyOrder hasn't run yet
       console.log(`⚠️ No existing transaction found. Creating new transaction record...`);
       const amount = payment.amount ? payment.amount / 100 : 0;
       
+      // Try to find site_user_id from existing transactions with same razorpay_order_id
+      let siteUserId = null;
+      if (payment.order_id) {
+        console.log(`🔍 Looking for site_user_id from existing transactions with razorpay_order_id: ${payment.order_id}`);
+        const [existingTxns] = await pool.query(
+          `SELECT site_user_id FROM transactions 
+           WHERE razorpay_order_id = ? AND site_user_id IS NOT NULL
+           LIMIT 1`,
+          [payment.order_id]
+        );
+        
+        if (existingTxns.length > 0) {
+          siteUserId = existingTxns[0].site_user_id;
+          console.log(`✅ Found site_user_id: ${siteUserId} from existing transaction`);
+        } else {
+          // Try to find from orders table using razorpay_order_id
+          console.log(`🔍 Looking for site_user_id from orders table...`);
+          // Note: We can't directly match razorpay_order_id to orders, but we can check if verifyOrder has run
+          // For now, we'll skip creating the transaction and let verifyOrder handle it
+          console.log(`⚠️ Cannot find site_user_id. Transaction will be created by verifyOrder.`);
+          console.log(`${"-".repeat(80)}\n`);
+          return; // Exit early, verifyOrder will create the transaction
+        }
+      }
+      
+      if (!siteUserId) {
+        console.log(`⚠️ Cannot create transaction without site_user_id. Will be created when verifyOrder runs.`);
+        console.log(`${"-".repeat(80)}\n`);
+        return; // Exit early, verifyOrder will create the transaction
+      }
+      
       try {
         console.log(`📝 Creating transaction with data:`, {
           razorpay_payment_id: payment.id,
           razorpay_order_id: payment.order_id || null,
+          site_user_id: siteUserId,
           amount,
           currency: payment.currency || "INR",
           status: "captured",
@@ -481,7 +571,7 @@ async function handlePaymentCaptured(payload) {
           [
             payment.id,
             payment.order_id || null,
-            null, // site_user_id - will be updated when verifyOrder runs
+            siteUserId, // Use found site_user_id
             amount,
             payment.currency || "INR",
             "captured",
@@ -495,7 +585,7 @@ async function handlePaymentCaptured(payload) {
             payment.created_at || null,
           ]
         );
-        console.log(`✅ Transaction record created with ID: ${result.insertId} for payment ${payment.id} (order will be linked when verifyOrder runs)`);
+        console.log(`✅ Transaction record created with ID: ${result.insertId} for payment ${payment.id}`);
       
       // Try to find and update order if razorpay_order_id matches
       if (payment.order_id) {
@@ -581,6 +671,56 @@ async function handlePaymentFailed(payload) {
       [transactions[0].order_id]
     );
   }
+}
+
+/**
+ * Handle order.paid event
+ */
+async function handleOrderPaid(payload) {
+  const payment = payload.payment?.entity;
+  const order = payload.order?.entity;
+
+  console.log(`\n${"-".repeat(80)}`);
+  console.log(`✅ Processing order.paid event`);
+  if (order) {
+    console.log(`📦 Razorpay Order ID: ${order.id}`);
+    console.log(`💰 Order Amount: ${order.amount ? order.amount / 100 : "N/A"}`);
+    console.log(`📊 Order Status: ${order.status}`);
+  }
+  if (payment) {
+    console.log(`💳 Payment ID: ${payment.id}`);
+    console.log(`📊 Payment Status: ${payment.status}`);
+  }
+
+  // Find our local order by matching razorpay_order_id in transactions
+  if (order && payment) {
+    console.log(`🔍 Looking for local order linked to Razorpay order: ${order.id}`);
+    
+    // Find transaction with this razorpay_order_id
+    const [transactions] = await pool.query(
+      `SELECT order_id, site_user_id FROM transactions 
+       WHERE razorpay_order_id = ? AND order_id IS NOT NULL
+       LIMIT 1`,
+      [order.id]
+    );
+
+    if (transactions.length > 0) {
+      const localOrderId = transactions[0].order_id;
+      console.log(`✅ Found local order ${localOrderId}. Updating status...`);
+      
+      // Update order status
+      await pool.query(
+        `UPDATE orders 
+         SET payment_status = 'paid', status = 'processing', updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [localOrderId]
+      );
+      console.log(`✅ Order ${localOrderId} updated to paid status via order.paid webhook`);
+    } else {
+      console.log(`⚠️ No local order found for Razorpay order ${order.id}. Will be linked when verifyOrder runs.`);
+    }
+  }
+  console.log(`${"-".repeat(80)}\n`);
 }
 
 /**
