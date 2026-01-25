@@ -668,10 +668,10 @@ export const getPaymentStatistics = async (req, res) => {
     );
 
     // Paid payment links
-    const [paidLinks] = await pool.query(
-      `SELECT COUNT(*) as total FROM payment_links WHERE status = 'paid' ${dateFilter.replace("WHERE", "AND")}`,
-      dateFilter ? params : []
-    );
+    const paidLinksQuery = dateFilter 
+      ? `SELECT COUNT(*) as total FROM payment_links WHERE status = 'paid' AND ${dateFilter.replace("WHERE ", "")}`
+      : `SELECT COUNT(*) as total FROM payment_links WHERE status = 'paid'`;
+    const [paidLinks] = await pool.query(paidLinksQuery, dateFilter ? params : []);
 
     // Total transactions
     const [totalTransactions] = await pool.query(
@@ -680,31 +680,34 @@ export const getPaymentStatistics = async (req, res) => {
     );
 
     // Successful transactions
-    const [successTransactions] = await pool.query(
-      `SELECT COUNT(*) as total FROM transactions WHERE status IN ('captured', 'authorized') ${dateFilter.replace("WHERE", "AND")}`,
-      dateFilter ? params : []
-    );
+    const successTransactionsQuery = dateFilter
+      ? `SELECT COUNT(*) as total FROM transactions WHERE status IN ('captured', 'authorized') AND ${dateFilter.replace("WHERE ", "")}`
+      : `SELECT COUNT(*) as total FROM transactions WHERE status IN ('captured', 'authorized')`;
+    const [successTransactions] = await pool.query(successTransactionsQuery, dateFilter ? params : []);
 
     // Total revenue
-    const [revenue] = await pool.query(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE status IN ('captured', 'authorized') ${dateFilter.replace("WHERE", "AND")}`,
-      dateFilter ? params : []
-    );
+    const revenueQuery = dateFilter
+      ? `SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE status IN ('captured', 'authorized') AND ${dateFilter.replace("WHERE ", "")}`
+      : `SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE status IN ('captured', 'authorized')`;
+    const [revenue] = await pool.query(revenueQuery, dateFilter ? params : []);
 
     // Total refunds
-    const [refunds] = await pool.query(
-      `SELECT COUNT(*) as total, COALESCE(SUM(amount), 0) as amount FROM refunds WHERE status = 'processed' ${dateFilter.replace("WHERE", "AND")}`,
-      dateFilter ? params : []
-    );
+    const refundsQuery = dateFilter
+      ? `SELECT COUNT(*) as total, COALESCE(SUM(amount), 0) as amount FROM refunds WHERE status = 'processed' AND ${dateFilter.replace("WHERE ", "")}`
+      : `SELECT COUNT(*) as total, COALESCE(SUM(amount), 0) as amount FROM refunds WHERE status = 'processed'`;
+    const [refunds] = await pool.query(refundsQuery, dateFilter ? params : []);
 
     // Payment method breakdown
-    const [paymentMethods] = await pool.query(
-      `SELECT payment_method, COUNT(*) as count, SUM(amount) as total 
-       FROM transactions 
-       WHERE status IN ('captured', 'authorized') ${dateFilter.replace("WHERE", "AND")}
-       GROUP BY payment_method`,
-      dateFilter ? params : []
-    );
+    const paymentMethodsQuery = dateFilter
+      ? `SELECT payment_method, COUNT(*) as count, SUM(amount) as total 
+         FROM transactions 
+         WHERE status IN ('captured', 'authorized') AND ${dateFilter.replace("WHERE ", "")}
+         GROUP BY payment_method`
+      : `SELECT payment_method, COUNT(*) as count, SUM(amount) as total 
+         FROM transactions 
+         WHERE status IN ('captured', 'authorized')
+         GROUP BY payment_method`;
+    const [paymentMethods] = await pool.query(paymentMethodsQuery, dateFilter ? params : []);
 
     return res.json({
       success: true,
