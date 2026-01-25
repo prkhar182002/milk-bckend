@@ -82,12 +82,24 @@ const site_user_id= req.user.id;
       return res.status(400).json({ success: false, message: "Invalid signature" });
     }
 
+    // ✅ Map frontend type values to database enum values
+    // Frontend sends: 'one_time', 'daily', 'alternative'
+    // Database expects: 'onetime', 'daily', 'alternative'
+    const typeMapping = {
+      'one_time': 'onetime',
+      'daily': 'daily',
+      'alternative': 'alternative',
+      'weekly': 'weekly',
+      'monthly': 'monthly'
+    };
+    const dbType = typeMapping[type] || 'onetime'; // Default to 'onetime' if unknown
+
     // ✅ Insert into orders table with PENDING payment status
     // Webhook will update to 'paid' when payment is confirmed (source of truth)
     const [orderResult] = await pool.query(
       `INSERT INTO orders (site_user_id, address_id, total_amount, status, payment_status, type)
        VALUES (?, ?, ?, 'pending', 'pending', ?)`,
-      [site_user_id, address_id, total_amount, type]
+      [site_user_id, address_id, total_amount, dbType]
     );
 
     const orderId = orderResult.insertId;
