@@ -46,7 +46,8 @@ const buildOptions = {
     'express',
     'cors',
     'cookie-parser',
-    'dotenv'
+    'dotenv',
+    'sanitize-html'
   ],
   banner: {
     js: '#!/usr/bin/env node'
