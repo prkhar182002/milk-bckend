@@ -167,7 +167,13 @@ const site_user_id= req.user.id;
     });
   } catch (error) {
     console.error("❌ Error in verifyOrder:", error);
-    res.status(500).json({ success: false, message: "Verification failed" });
+    // If order was created but error occurred later, still return order_id if available
+    const orderId = error.orderId || null;
+    res.status(500).json({ 
+      success: false, 
+      message: "Verification failed", 
+      order_id: orderId 
+    });
   }
  }
 
