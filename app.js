@@ -14,6 +14,7 @@ import razorpayRoutes from "./Route/Razerpay.js"
 import paymentLinkRoutes from "./Route/paymentLinkRoutes.js"
 import webhookRoutes from "./Route/webhookRoutes.js"
 import paymentAdminRoutes from "./Route/paymentAdminRoutes.js"
+import orderAdminRoutes from "./Route/orderAdminRoutes.js"
 import db from "./config/db.js"   
 import adminRoutes from "./Route/adminRoutes.js"
 
@@ -58,6 +59,7 @@ app.use("/admin/product",ProductRoute);
 app.use("/admin/banner",BannerRoutes);
 app.use("/admin/blog",blogRoute)
 app.use("/admin/payments", paymentAdminRoutes);
+app.use("/admin/orders", orderAdminRoutes);
 
 // all
 app.use("/api/user/category",CategoryRoute)

@@ -250,11 +250,13 @@ async function handlePaymentCaptured(payload) {
 
   // Check if transaction exists
   const [existingTransactions] = await pool.query(
-    `SELECT id, order_id, site_user_id FROM transactions WHERE razorpay_payment_id = ?`,
+    `SELECT id, order_id, site_user_id, razorpay_order_id FROM transactions WHERE razorpay_payment_id = ?`,
     [payment.id]
   );
 
   if (existingTransactions.length > 0) {
+    const transaction = existingTransactions[0];
+    
     // Update existing transaction
     await pool.query(
       `UPDATE transactions 
@@ -264,14 +266,67 @@ async function handlePaymentCaptured(payload) {
     );
 
     // Update order status if linked to an order
-    if (existingTransactions[0].order_id) {
+    if (transaction.order_id) {
       await pool.query(
         `UPDATE orders 
          SET payment_status = 'paid', status = 'processing', updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-        [existingTransactions[0].order_id]
+        [transaction.order_id]
       );
-      console.log(`✅ Order ${existingTransactions[0].order_id} updated to paid status via webhook`);
+      console.log(`✅ Order ${transaction.order_id} updated to paid status via webhook`);
+    } else if (transaction.razorpay_order_id) {
+      // Try to find order by razorpay_order_id from transactions table
+      // This handles the case where webhook arrives before verifyOrder links the order
+      const [ordersByRazorpayOrder] = await pool.query(
+        `SELECT o.id FROM orders o
+         INNER JOIN transactions t ON t.razorpay_order_id = ?
+         WHERE t.razorpay_payment_id = ?
+         LIMIT 1`,
+        [transaction.razorpay_order_id, payment.id]
+      );
+      
+      if (ordersByRazorpayOrder.length > 0) {
+        const orderId = ordersByRazorpayOrder[0].id;
+        // Update transaction with order_id
+        await pool.query(
+          `UPDATE transactions SET order_id = ? WHERE razorpay_payment_id = ?`,
+          [orderId, payment.id]
+        );
+        // Update order status
+        await pool.query(
+          `UPDATE orders 
+           SET payment_status = 'paid', status = 'processing', updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+          [orderId]
+        );
+        console.log(`✅ Order ${orderId} found and updated to paid status via webhook (by razorpay_order_id)`);
+      } else {
+        // Try to find order by matching razorpay_order_id in transactions
+        // Look for any transaction with this razorpay_order_id that has an order_id
+        const [linkedOrders] = await pool.query(
+          `SELECT DISTINCT order_id FROM transactions 
+           WHERE razorpay_order_id = ? AND order_id IS NOT NULL
+           LIMIT 1`,
+          [transaction.razorpay_order_id]
+        );
+        
+        if (linkedOrders.length > 0) {
+          const orderId = linkedOrders[0].order_id;
+          // Update this transaction with order_id
+          await pool.query(
+            `UPDATE transactions SET order_id = ? WHERE razorpay_payment_id = ?`,
+            [orderId, payment.id]
+          );
+          // Update order status
+          await pool.query(
+            `UPDATE orders 
+             SET payment_status = 'paid', status = 'processing', updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [orderId]
+          );
+          console.log(`✅ Order ${orderId} found and updated to paid status via webhook (by matching razorpay_order_id)`);
+        }
+      }
     }
   } else {
     // Transaction doesn't exist - create it (webhook arrived before verifyOrder)
@@ -279,7 +334,7 @@ async function handlePaymentCaptured(payload) {
     const amount = payment.amount ? payment.amount / 100 : 0;
     
     try {
-      await pool.query(
+      const [result] = await pool.query(
         `INSERT INTO transactions (
           razorpay_payment_id, razorpay_order_id, site_user_id,
           amount, currency, status, captured, payment_method, payment_method_type,
@@ -303,6 +358,34 @@ async function handlePaymentCaptured(payload) {
         ]
       );
       console.log(`✅ Transaction record created for payment ${payment.id} (order will be linked when verifyOrder runs)`);
+      
+      // Try to find and update order if razorpay_order_id matches
+      if (payment.order_id) {
+        // Look for transactions with this razorpay_order_id that have order_id
+        const [linkedOrders] = await pool.query(
+          `SELECT DISTINCT order_id FROM transactions 
+           WHERE razorpay_order_id = ? AND order_id IS NOT NULL
+           LIMIT 1`,
+          [payment.order_id]
+        );
+        
+        if (linkedOrders.length > 0) {
+          const orderId = linkedOrders[0].order_id;
+          // Update this new transaction with order_id
+          await pool.query(
+            `UPDATE transactions SET order_id = ? WHERE id = ?`,
+            [orderId, result.insertId]
+          );
+          // Update order status
+          await pool.query(
+            `UPDATE orders 
+             SET payment_status = 'paid', status = 'processing', updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [orderId]
+          );
+          console.log(`✅ Order ${orderId} found and updated to paid status via webhook (new transaction linked)`);
+        }
+      }
     } catch (error) {
       console.error(`❌ Error creating transaction for payment ${payment.id}:`, error);
     }

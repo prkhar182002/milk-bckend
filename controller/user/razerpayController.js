@@ -143,6 +143,27 @@ const site_user_id= req.user.id;
             [orderId]
           );
           console.log(`✅ Order ${orderId} status updated to paid (webhook already confirmed)`);
+        } else {
+          // Even if webhook hasn't confirmed yet, check if payment was captured
+          // This handles cases where webhook is delayed or fails
+          try {
+            const paymentDetails = await razorpay.payments.fetch(razorpay_payment_id);
+            if (paymentDetails.status === 'captured' || paymentDetails.captured === true) {
+              await pool.query(
+                `UPDATE orders SET payment_status = 'paid', status = 'processing' WHERE id = ?`,
+                [orderId]
+              );
+              // Also update transaction
+              await pool.query(
+                `UPDATE transactions SET status = 'captured', captured = true WHERE razorpay_payment_id = ?`,
+                [razorpay_payment_id]
+              );
+              console.log(`✅ Order ${orderId} status updated to paid (payment verified via Razorpay API fallback)`);
+            }
+          } catch (apiError) {
+            console.error("Error checking payment status from Razorpay:", apiError);
+            // Non-critical, continue - webhook will update it later
+          }
         }
       } else {
         // Create new transaction record (webhook hasn't arrived yet)
@@ -165,6 +186,26 @@ const site_user_id= req.user.id;
           ]
         );
         console.log(`✅ Transaction record created for payment ${razorpay_payment_id} linked to order ${orderId} (waiting for webhook confirmation)`);
+        
+        // Fallback: Check payment status directly from Razorpay API
+        // This ensures order is updated even if webhook is delayed
+        try {
+          const paymentDetails = await razorpay.payments.fetch(razorpay_payment_id);
+          if (paymentDetails.status === 'captured' || paymentDetails.captured === true) {
+            await pool.query(
+              `UPDATE orders SET payment_status = 'paid', status = 'processing' WHERE id = ?`,
+              [orderId]
+            );
+            await pool.query(
+              `UPDATE transactions SET status = 'captured', captured = true WHERE razorpay_payment_id = ?`,
+              [razorpay_payment_id]
+            );
+            console.log(`✅ Order ${orderId} status updated to paid (payment verified via Razorpay API fallback)`);
+          }
+        } catch (apiError) {
+          console.error("Error checking payment status from Razorpay (non-critical):", apiError);
+          // Non-critical, webhook will update it
+        }
       }
     } catch (error) {
       console.error("⚠️ Error creating/updating transaction record (non-critical):", error);
