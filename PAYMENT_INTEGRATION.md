@@ -203,7 +203,7 @@ Authorization: Bearer <admin_token> or Cookie: admin=<token>
 
 **Production Endpoint:**
 ```
-POST https://api.gauallamilk.com/api/webhook
+POST 
 Content-Type: application/json
 X-Razorpay-Signature: <signature>
 
@@ -212,7 +212,7 @@ Body: (Razorpay webhook payload)
 
 **Alternative Endpoint (also available):**
 ```
-POST https://api.gauallamilk.com/api/webhooks/razorpay
+POST 
 ```
 
 **Note:** 

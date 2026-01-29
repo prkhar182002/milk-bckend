@@ -1,13 +1,11 @@
 import pool from "../../config.js";
 
+export const createAddress = async (req, res) => {
+  try {
+    const user_id = req.user.id;
 
-
-
-export const createAddress=async(req,res)=>{
-    try  {
-        const  user_id  = req.user.id;
-
-         const { first_name,
+    const {
+      first_name,
       last_name,
       gender,
       email,
@@ -17,30 +15,49 @@ export const createAddress=async(req,res)=>{
       city,
       state,
       zip_code,
+      latitude,
+      longitude,
       country,
       address_type,
-      is_default
+      is_default,
     } = req.body;
 
-    // Validate required fields
-    if (!first_name || !last_name || !phone || !street || !city || !state || !zip_code || !country) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Please fill in all required fields" 
+   
+
+    // ✅ Validate required fields
+    if (
+      !first_name ||
+      !last_name ||
+      !phone ||
+      !street ||
+      !city ||
+      !state ||
+      !zip_code ||
+      !country
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Please fill in all required fields",
       });
     }
 
-    // If this address should be set as default, unset all other default addresses first
-    const shouldSetAsDefault = is_default === 1 || is_default === true || is_default === "1";
-    
+    // ✅ Handle default address
+    const shouldSetAsDefault =
+      is_default === 1 || is_default === true || is_default === "1";
+
     if (shouldSetAsDefault) {
-      await pool.query("UPDATE newaddresses SET is_default = 0 WHERE site_user_id = ?", [user_id]);
+      await pool.query(
+        "UPDATE newaddresses SET is_default = 0 WHERE site_user_id = ?",
+        [user_id]
+      );
     }
 
+    //  Insert address (FIXED ORDER)
    const [result] = await pool.query(
-  `INSERT INTO newaddresses 
-   (site_user_id, first_name, last_name, gender, email, phone, street, landmark, city, state, zip_code, country, address_type, is_default) 
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  `INSERT INTO newaddresses
+  (site_user_id, first_name, last_name, gender, email, phone, street, landmark,
+   city, state, zip_code, country, latitude, longitude, address_type, is_default)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   [
     user_id,
     first_name,
@@ -54,23 +71,25 @@ export const createAddress=async(req,res)=>{
     state,
     zip_code,
     country,
+    latitude || null,
+    longitude || null,
     address_type || "home",
     shouldSetAsDefault ? 1 : 0,
   ]
-); 
-    return res.json({ success: true, message: "Address added successfully", id: result.insertId });
-     } catch (error) {
-      console.error("Error creating address:", error);
-      console.error("Error details:", {
-        message: error.message,
-        code: error.code,
-        sqlState: error.sqlState,
-        sql: error.sql
-      });
-    res.status(500).json({ success: false, message: error.message || "Server error" });
-    }
-}
-
+);
+    return res.json({
+      success: true,
+      message: "Address added successfully",
+      id: result.insertId,
+    });
+  } catch (error) {
+    console.error("Error creating address:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while creating address",
+    });
+  }
+};
 
 export const getAddress = async (req, res) => {
   try {
@@ -83,7 +102,7 @@ export const getAddress = async (req, res) => {
 
     res.json({
       success: true,
-       addresses,
+      addresses,
     });
   } catch (error) {
     console.error("Error fetching addresses:", error);
@@ -99,7 +118,7 @@ export const UpdatedefaultAddress = async (req, res) => {
     const user_id = req.user.id;
     const { address_id } = req.params;
 
-    // Reset all addresses for this user
+    // Reset all addresses
     await pool.query(
       "UPDATE newaddresses SET is_default = 0 WHERE site_user_id = ?",
       [user_id]
@@ -130,4 +149,3 @@ export const UpdatedefaultAddress = async (req, res) => {
     });
   }
 };
-

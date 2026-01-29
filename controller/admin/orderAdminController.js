@@ -167,7 +167,9 @@ export const getOrderById = async (req, res) => {
         a.state,
         a.zip_code,
         a.country,
-        a.phone AS address_phone
+        a.phone AS address_phone,
+        a.latitude,
+        a.longitude
       FROM orders o
       LEFT JOIN users u ON o.site_user_id = u.id
       LEFT JOIN newaddresses a ON o.address_id = a.id
@@ -228,6 +230,8 @@ export const getOrderById = async (req, res) => {
           zip_code: order.zip_code,
           country: order.country,
           phone: order.address_phone,
+          latitude: order.latitude,
+          longitude: order.longitude,
         },
         user: {
           name: order.user_name,
