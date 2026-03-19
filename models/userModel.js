@@ -1,8 +1,9 @@
-import pool from "../config.js";
+import db from "../config/db.js";
 
 async function migrate() {
-  const connection = await pool.getConnection();
+  let connection;
   try {
+    connection = await db.getConnection();
     await connection.beginTransaction();
 
     console.log("🚀 Running migrations...");
@@ -19,6 +20,18 @@ async function migrate() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
     console.log("✅ users table ready");
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS admins (
+        id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) NOT NULL UNIQUE,
+        password VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+    console.log("✅ admins table ready");
 
   await connection.query(`
   CREATE TABLE IF NOT EXISTS newaddresses (
@@ -127,6 +140,7 @@ CREATE TABLE IF NOT EXISTS orders (
         NOT NULL DEFAULT 'pending',
   type ENUM('onetime', 'daily', 'alternative', 'weekly', 'monthly') 
         NOT NULL DEFAULT 'onetime',
+        alternative_dates JSON DEFAULT NULL, -- stores array of ISO date strings for alternative orders
   notes TEXT DEFAULT NULL, -- optional field for special instructions
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -203,6 +217,8 @@ await connection.query(`
     short_description TEXT,
     yt_link VARCHAR(255) NULL,
     type ENUM('video', 'img') NOT NULL DEFAULT 'img',
+    tag VARCHAR(255) DEFAULT NULL,
+    readtime VARCHAR(50) DEFAULT NULL,
     full_description LONGTEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -226,11 +242,15 @@ await connection.query(`
     console.log("🎉 All migrations completed successfully!");
 
   } catch (err) {
-    await connection.rollback();
+    if (connection) {
+      await connection.rollback();
+    }
     console.error("❌ Migration failed:", err);
   } finally {
-    connection.release();
-    pool.end();
+    if (connection) {
+      connection.release();
+    }
+    // db.end(); // Don't end the pool, server needs it
   }
 }
 

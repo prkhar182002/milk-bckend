@@ -4,9 +4,9 @@ import { uploadsingleimg } from "../helper/storageImage.js";
 const routes = express.Router()
 
 routes.post("/create",uploadsingleimg.single("image"),Categorycontroler.createCategory)
+routes.get("/:id",Categorycontroler.getSingleCategory)
+routes.put("/:id",uploadsingleimg.single("image"),Categorycontroler.updateCategory)
 routes.delete("/:id",Categorycontroler.deleteCategory);
-
-
 
 
 

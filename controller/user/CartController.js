@@ -167,6 +167,28 @@ export const deleteCart = async (req, res) => {
   }
 };
 
+// Clear all cart items for a user (used after successful order)
+export const clearAllCart = async (req, res) => {
+  try {
+    const { user } = req;
+
+    // Delete all cart items for the user
+    const [result] = await pool.execute(
+      `DELETE FROM carts WHERE user_id = ?`,
+      [user.id]
+    );
+
+    return res.json({
+      success: true,
+      message: "All cart items cleared successfully",
+      deleted_count: result.affectedRows
+    });
+  } catch (error) {
+    console.error("Error clearing cart:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 export const getSingleCart = async (req, res) => {
   try {
     const cartId = req.params.id;
