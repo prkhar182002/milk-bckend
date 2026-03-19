@@ -397,7 +397,7 @@ export const getSingleOrder = async (req, res) => {
   try {
     // 1. Get the order with address
     const [orders] = await pool.query(
-      `SELECT o.*, a.first_name, a.last_name, a.street, a.city, a.state, a.zip_code, a.country
+      `SELECT o.*, a.first_name, a.last_name, a.street, a.city, a.state, a.zip_code, a.country, a.latitude, a.longitude
        FROM orders o
        LEFT JOIN newaddresses a ON o.address_id = a.id
        WHERE o.id = ?
@@ -431,6 +431,8 @@ export const getSingleOrder = async (req, res) => {
         state: order.state,
         zip_code: order.zip_code,
         country: order.country,
+        latitude: order.latitude,
+        longitude: order.longitude,
       },
       items,
     };
